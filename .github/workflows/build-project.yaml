@@ -326,11 +326,25 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_DIRECT: "true"
+      CCACHE_SLOPPINESS: include_file_ctime,include_file_mtime,time_macros,pch_defines
+      CCACHE_COMPILERCHECK: content
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
           fetch-depth: 0
+
+      - uses: actions/cache/restore@v5
+        id: ccache-cache
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
 
       - name: Set Up Environment 🔧
         id: setup
@@ -348,7 +362,7 @@ jobs:
           "pluginVersion=${ProductVersion}" >> $env:GITHUB_OUTPUT
 
       - name: Checkout vcpkg repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: microsoft/vcpkg
           path: ${{ env.VCPKG_ROOT }}
@@ -363,10 +377,22 @@ jobs:
         shell: bash
         run: "$VCPKG_ROOT/vcpkg install --triplet x64-windows-static-md-obs"
 
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+
       - name: Set Up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+
+      - name: Set up Ccache
+        shell: bash
+        run: |
+          curl -fsSLO https://github.com/ccache/ccache/releases/download/v4.12.3/ccache-4.12.3-windows-x86_64.zip
+          echo "859141059ac950e1e8cd042c66f842f26b9e3a62a1669a69fe6ba180cb58bbdf  ./ccache-4.12.3-windows-x86_64.zip" | sha256sum -c -
+          mkdir -p .deps_vendor/ccache
+          unzip -j ccache-4.12.3-windows-x86_64.zip "*/ccache.exe" -d .deps_vendor/ccache
+          cygpath -w $(pwd)/.deps_vendor/ccache >> "$GITHUB_PATH"
 
       - name: Build ONNX Runtime
         shell: pwsh
@@ -388,10 +414,16 @@ jobs:
           package: ${{ fromJSON(needs.check-event.outputs.package) }}
 
       - name: Upload Artifacts 📡
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-windows-x64-${{ needs.check-event.outputs.commitHash }}
           path: ${{ github.workspace }}/release/${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-windows-x64*.*
+
+      - uses: actions/cache/save@v5
+        if: github.event_name != 'pull_request' && success()
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ runner.os }}-${{ github.run_id }}
 
   # windows-gpu-build:
   #   name: Build for Windows (GPU) 🪟
