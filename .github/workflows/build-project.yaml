@@ -240,7 +240,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
           fetch-depth: 0
@@ -257,7 +257,7 @@ jobs:
           echo "pluginName=${product_name}" >> $GITHUB_OUTPUT
           echo "pluginVersion=${product_version}" >> $GITHUB_OUTPUT
 
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5
         id: ccache-cache
         with:
           path: ${{ github.workspace }}/.ccache
@@ -266,7 +266,7 @@ jobs:
             ${{ runner.os }}-${{ matrix.os }}-ccache-x86_64-
 
       - name: Checkout vcpkg repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: microsoft/vcpkg
           path: ${{ env.VCPKG_ROOT }}
@@ -277,9 +277,12 @@ jobs:
 
       - name: "Install dependencies from vcpkg"
         run: "$VCPKG_ROOT/vcpkg install --triplet x64-linux-obs"
-      
-      - name: "Download ONNX Runtime"
-        run: "cmake -P cmake/DownloadOnnxruntime.cmake"
+
+      - name: Build ONNX Runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ccache python3-flatbuffers
+          ./scripts/build_ort_ubuntu.sh
 
       - name: Build Plugin 🧱
         uses: ./.github/actions/build-plugin
@@ -295,29 +298,32 @@ jobs:
           package: ${{ fromJSON(needs.check-event.outputs.package) }}
 
       - name: Upload Source Tarball 🗜️
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-${{ matrix.os }}-sources-${{ needs.check-event.outputs.commitHash }}
           path: ${{ github.workspace }}/release/${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-source.*
 
       - name: Upload Artifacts 📡
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-${{ matrix.os }}-x86_64-${{ needs.check-event.outputs.commitHash }}
           path: ${{ github.workspace }}/release/${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-x86_64*.*
 
       - name: Upload debug symbol artifacts 🪲
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: ${{ fromJSON(needs.check-event.outputs.package) }}
         with:
           name: ${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-${{ matrix.os }}-x86_64-${{ needs.check-event.outputs.commitHash }}-dbgsym
           path: ${{ github.workspace }}/release/${{ steps.setup.outputs.pluginName }}-${{ steps.setup.outputs.pluginVersion }}-x86_64*-dbgsym.ddeb
 
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v5
         if: github.event_name != 'pull_request' && steps.ccache-cache.outputs.cache-hit != 'true'
         with:
           path: ${{ github.workspace }}/.ccache
           key: ${{ runner.os }}-${{ matrix.os }}-ccache-x86_64-${{ needs.check-event.outputs.config }}
+
+      - if: always()
+        run: find ${{ github.workspace }}/.deps_vendor
 
   windows-build:
     name: Build for Windows 🪟
