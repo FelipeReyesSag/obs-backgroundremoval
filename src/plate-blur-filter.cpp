@@ -4,7 +4,9 @@
 
 #include "plate-blur-filter.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <condition_variable>
 #include <cstring>
 #include <exception>
