@@ -220,6 +220,17 @@ if(APPLE)
     source_group("Frameworks" FILES "${_ort_runtime_file}")
   endforeach()
   set_property(TARGET ${CMAKE_PROJECT_NAME} APPEND PROPERTY INSTALL_RPATH "@loader_path/../Frameworks")
+  # cmake/macos/xcode.cmake sets CMAKE_SKIP_RPATH=TRUE and hardcodes Xcode's
+  # LD_RUNPATH_SEARCH_PATHS to "@executable_path/../Frameworks", which makes
+  # CMake's install-time INSTALL_RPATH patching a no-op. @executable_path
+  # resolves to OBS itself, so dyld looks for libonnxruntime in OBS.app/...
+  # and never in our plugin bundle. Append @loader_path/../Frameworks at
+  # link time so the rpath lands in the binary directly.
+  set_property(
+    TARGET ${CMAKE_PROJECT_NAME}
+    APPEND
+    PROPERTY XCODE_ATTRIBUTE_LD_RUNPATH_SEARCH_PATHS "@loader_path/../Frameworks"
+  )
 elseif(MSVC)
   target_sources(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/exported_symbols_windows.def")
 
