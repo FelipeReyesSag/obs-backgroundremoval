@@ -15,7 +15,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-MODEL_URL="${MODEL_URL:-https://github.com/ankandrew/fast-alpr/releases/download/v1.0.0/yolo-v9-t-384-license-plate-end2end.onnx}"
+# The pretrained YOLOv9-t plate detector is published by ankandrew's
+# open-image-models project (which fast-alpr depends on for detection). The
+# release tag is literally "assets" and the asset name uses the plural
+# "license-plates" — we rename to "license-plate" locally to match the path
+# baked into src/plate-blur-consts.h.
+MODEL_URL="${MODEL_URL:-https://github.com/ankandrew/open-image-models/releases/download/assets/yolo-v9-t-384-license-plates-end2end.onnx}"
 TARGET_DIR="$REPO_ROOT/data/models"
 TARGET_FILE="$TARGET_DIR/yolo-v9-t-384-license-plate-end2end.onnx"
 

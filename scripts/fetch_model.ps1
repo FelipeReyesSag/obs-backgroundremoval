@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $RepoRoot = Split-Path -Parent $ScriptDir
 
-$ModelUrl = if ($env:MODEL_URL) { $env:MODEL_URL } else { "https://github.com/ankandrew/fast-alpr/releases/download/v1.0.0/yolo-v9-t-384-license-plate-end2end.onnx" }
+$ModelUrl = if ($env:MODEL_URL) { $env:MODEL_URL } else { "https://github.com/ankandrew/open-image-models/releases/download/assets/yolo-v9-t-384-license-plates-end2end.onnx" }
 $TargetDir = Join-Path $RepoRoot "data/models"
 $TargetFile = Join-Path $TargetDir "yolo-v9-t-384-license-plate-end2end.onnx"
 
