@@ -283,17 +283,17 @@ std::vector<PlateBox> detectPlates(ORTModelData &model, const cv::Mat &imageBGRA
 		std::string fields;
 		for (int64_t f = 0; f < numFields; ++f) {
 			char buf[32];
-			snprintf(buf, sizeof(buf), "%s%.4f", f == 0 ? "" : ", ", fetch(0, f));
+			snprintf(buf, sizeof(buf), "%s%.4f", f == 0 ? "" : ", ", fetch(0, static_cast<int>(f)));
 			fields += buf;
 		}
 		obs_log(LOG_INFO, "PlateDetector: first non-empty detection raw fields=[%s]", fields.c_str());
 		// Also dump per-field min/max across all detections in this batch so
 		// the scale/range of each field is visible at a glance.
 		for (int64_t f = 0; f < numFields; ++f) {
-			float lo = fetch(0, f);
+			float lo = fetch(0, static_cast<int>(f));
 			float hi = lo;
 			for (int64_t i = 1; i < numDets; ++i) {
-				const float v = fetch(i, f);
+				const float v = fetch(i, static_cast<int>(f));
 				if (v < lo)
 					lo = v;
 				if (v > hi)
