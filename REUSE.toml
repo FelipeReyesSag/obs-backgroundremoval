@@ -1,6 +1,6 @@
 version = 1
 
-# Configuration files
+# Configuration / build metadata files.
 [[annotations]]
 path = [
     ".gitattributes",
@@ -16,6 +16,7 @@ path = [
     "CMakePresets.json",
     "data/config.json",
     "data/manifest.json",
+    "data/models/.gitkeep",
     "requirements-build.txt",
     "scripts/windows/*",
     "src/exported_symbols_linux.map",
@@ -23,22 +24,21 @@ path = [
     "src/exported_symbols_windows.def",
     "vcpkg-configuration.json",
     "vcpkg.json",
-    "vcpkg-configuration.json",
 ]
 SPDX-FileCopyrightText = [
     "2018-2026 OBS Project and its contributors",
     "2021-2026 Roy Shilkrot <roy.shil@gmail.com>",
     "2023-2026 Kaito Udagawa <umireon@kaito.tokyo>",
+    "2026 Felipe Reyes",
 ]
 SPDX-License-Identifier = "CC0-1.0"
 
-# Locale files (reuse tool has some bug around reading not-ASCII files)
+# Locale files (reuse tool has bugs with non-ASCII content).
 [[annotations]]
 path = [
     "data/locale/*.ini"
 ]
 SPDX-FileCopyrightText = [
-    "2021-2026 Roy Shilkrot <roy.shil@gmail.com>",
-    "2023-2026 Kaito Udagawa <umireon@kaito.tokyo>",
+    "2026 Felipe Reyes",
 ]
 SPDX-License-Identifier = "CC0-1.0"

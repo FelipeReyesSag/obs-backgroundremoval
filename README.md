@@ -1,108 +1,128 @@
-# OBS Plugin: Portrait Background Removal / Virtual Green-screen and Low-Light Enhancement
+# Plate Blur for OBS
 
-<div align="center">
+An [OBS Studio](https://obsproject.com/) filter that automatically detects and
+blurs license plates in your video feed in real time. Designed for IRL / driving
+streamers who want an additional layer of privacy on top of manually hiding
+plates.
 
-[![GitHub](https://img.shields.io/github/license/royshil/obs-backgroundremoval)](https://github.com/royshil/obs-backgroundremoval/blob/main/LICENSE)
-[![GitHub Workflow Status](https://github.com/royshil/obs-backgroundremoval/actions/workflows/push.yaml/badge.svg)](https://github.com/royshil/obs-backgroundremoval/actions/workflows/push.yaml)
-[![Total downloads](https://img.shields.io/github/downloads/royshil/obs-backgroundremoval/total)](https://github.com/royshil/obs-backgroundremoval/releases)
-![Flathub](https://img.shields.io/flathub/downloads/com.obsproject.Studio.Plugin.BackgroundRemoval?label=Flathub%20Installs)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/royshil/obs-backgroundremoval)](https://github.com/royshil/obs-backgroundremoval/releases)
+> **Not a guarantee.** This plugin is an additional layer of protection, not a
+> sole safeguard. Computer vision models miss things — especially plates that
+> are small, heavily angled, motion-blurred, or partially occluded. Always test
+> your setup, keep using your existing privacy habits, and don't rely on this
+> plugin to save you from a mistake.
 
-</div>
+## How it works
 
-A plugin for [OBS Studio](https://obsproject.com/) that allows you to replace the background in portrait images and video, as well as enhance low-light scenes.
+- Add the **License Plate Blur** filter to any video source (webcam, game capture,
+  screen capture, ...).
+- The filter introduces a configurable delay (default **3 s**, adjustable 1–5 s).
+  This is intentional: it gives the AI plenty of time to run on **every single
+  frame** at full 1080p with no skipping. 3 s is imperceptible to streaming
+  viewers and normal for livestreaming.
+- A YOLOv9-t model from [fast-alpr](https://github.com/ankandrew/fast-alpr)
+  runs on every buffered frame and outputs plate bounding boxes.
+- A GPU shader Gaussian-blurs each detected region (with a safety padding)
+  before the delayed frame is emitted.
 
-<p align="center">
-  <a href="https://royshil.github.io/obs-backgroundremoval/">
-    <b>⬇️ Download & Install OBS Background Removal ⬇️</b>
-  </a>
-</p>
+The plugin **never reads plate text**. It only locates plates and blurs them.
 
-Or, browse versions on [releases page](https://github.com/royshil/obs-backgroundremoval/releases).
+## Install
 
-> Not working? Please try [the Lite version (Live Background Removal Lite)](https://github.com/kaito-tokyo/live-backgroundremoval-lite) developed by one of us (Kaito Udagawa).
+> Binary installers will be published on the GitHub releases page once v0.1.0
+> CI has produced them. Until then, build from source (below).
 
-## Usage
+Pre-built packages, when available:
 
-<div style="text-align:center;">
-<video src="https://github.com/royshil/obs-backgroundremoval/assets/1067855/5ba5aae2-7ea2-4c90-ad45-fba5ccde1a4e" width="320"></video>
-</div>
+- **Windows** — `.exe` installer
+- **macOS** — `.pkg` (universal)
+- **Linux (Ubuntu)** — `.deb`
 
-Check out the [usage guide page](https://royshil.github.io/obs-backgroundremoval/usage/) for usage walkthrough and recommendations.
+### Fetch the model
 
-Additional tutorial videos:
+The ONNX model is not redistributed in this repository. Download it into
+`data/models/` before first run:
 
-- [▶︎ Official guide to the Background Removal plugin for OBS Studio on YouTube](https://www.youtube.com/playlist?list=PLfd4SnaQQz_DVr_18OQozucYmiC56rRhy)
-- Depth of Field effect: https://youtu.be/jC3EKSpNjQk
-- Low-light enhancement: https://youtu.be/WSBLYWFrn2Q
-- Remove background from ANY object (not just human): https://youtu.be/N74VCDCToX8
+```bash
+# macOS / Linux
+scripts/fetch_model.sh
 
-## Introduction
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -File scripts/fetch_model.ps1
+```
 
-This plugin is meant to make it easy to replace the background in portrait images and video.
-It is using a neural network to predict the mask of the portrait and remove the background pixels.
-It's easily composable with other OBS plugins to replace the background with e.g. an image or
-a transparent color.
+Both scripts download `yolo-v9-t-384-license-plate-end2end.onnx` from
+fast-alpr's GitHub releases.
 
-If you like this work, which is given to you completely free of charge, please consider supporting it by sponsoring us on GitHub:
+## Build from source
 
-- https://github.com/sponsors/royshil
-- https://github.com/sponsors/umireon
+Requires CMake 3.28+, a C++20 compiler, and the OBS plugin deps (pulled
+automatically by the preset). Follow the OBS plugin template's standard
+instructions:
 
-### Support and Help
+```bash
+# Windows (Developer PowerShell)
+cmake --preset windows-x64
+cmake --build --preset windows-x64 --config RelWithDebInfo
 
-Reach out to us on [GitHub Discussions](https://github.com/royshil/obs-backgroundremoval/discussions) or the [OBS Plugins forum](https://obsproject.com/forum/resources/background-removal-portrait-segmentation.1260/) for online / immediate help.
+# macOS
+cmake --preset macos
+cmake --build --preset macos
 
-If you found a bug or want to suggest a feature or improvement please open an [issue](https://github.com/royshil/obs-backgroundremoval/issues).
+# Linux (requires libobs-dev, libonnxruntime-dev, libopencv-dev, libcurl-dev)
+cmake --preset ubuntu-x86_64
+cmake --build --preset ubuntu-x86_64
+```
 
-If you are looking for hands-on help or private consultation please select a [sponsorship tier](https://github.com/sponsors/royshil?frequency=one-time).
+Then install the resulting plugin into OBS's plugins directory and copy the
+`data/` folder alongside it.
 
-### Technical Details
+## Settings
 
-GPU support:
+| Setting | Range | Default | Notes |
+|---|---|---|---|
+| **Pipeline delay (ms)** | 1000–5000 | 3000 | Larger delay = more time for inference. Audio on the same source is *not* delayed — add a matching audio "Render Delay" filter if lip-sync matters. |
+| **Detection confidence** | 0.1–0.9 | 0.25 | Lower = more blurs (including false positives on non-plates). Higher = fewer blurs (risk of missing real plates). Leave low for privacy. |
+| **Blur strength (pixels)** | 1–30 | 12 | Gaussian blur radius applied inside each detected region. |
+| **Box padding** | 0.0–0.5 | 0.10 | Fraction of plate size to expand each blur region. Errs on the side of covering slightly more than detected. |
+| **Inference device** | CPU / CUDA / DirectML / CoreML / ... | platform-specific | Only providers compiled into the bundled ONNX Runtime are listed. Falls back to CPU if requested GPU provider is unavailable at runtime. |
+| **Show detection overlay** | toggle | off | Tints detection regions red (without blur) — useful for tuning confidence and padding. |
 
-- On Windows, we plan to support WinML acceleration.
-- On Mac we support CoreML for acceleration, which is efficient on Apple Silicon. **Note:** This plugin does not support cross-architecture translation (Rosetta2). Intel binaries on Apple Silicon or Apple Silicon binaries on Intel will crash.
-- On Linux CUDA, ROCM (deprecated in ONNX Runtime 1.23.0), and MIGraphX are supported if this plugin is built from source. Ensure your ONNX Runtime installation has CUDA, ROCM, or MIGraphX support. For AMD GPUs, MIGraphX is recommended as ROCM was removed from ONNX Runtime starting with version 1.23.0.
-- The goal of this plugin is to be available for everyone on every system, even if they don't own a GPU.
+## Hardware recommendations
 
-Number of CPU threads is controllable through the UI settings. A 2-thread setting works best.
+- **Discrete GPU**: ideal. Inference on a 384×384 input with YOLOv9-t is <5 ms
+  on most modern GPUs, so 60 fps source with 3 s buffer uses ~1.3 GB VRAM for
+  the frame ring.
+- **Integrated GPU**: works, but consider shortening the delay to 1–2 s and
+  using CPU inference with 2–4 threads.
+- **CPU-only**: possible at 30 fps; expect 15–40 ms per frame depending on
+  silicon.
 
-The pretrained model weights used for portrait foreground segmentation are taken from:
+## Known limitations (v0.1)
 
-- https://github.com/anilsathyan7/Portrait-Segmentation/tree/master/SINet
-- https://github.com/PaddlePaddle/PaddleSeg/tree/release/2.7/contrib/PP-HumanSeg
-- https://github.com/PINTO0309/PINTO_model_zoo/tree/main/082_MediaPipe_Meet_Segmentation
-- https://github.com/PeterL1n/RobustVideoMatting
-- https://github.com/PINTO0309/PINTO_model_zoo/tree/main/384_TCMonoDepth and https://github.com/yu-li/TCMonoDepth
+- Uses the generic fast-alpr model. Accuracy on US/CA plates is good but not
+  perfect; international plates are hit-or-miss.
+- Audio is not auto-delayed (add a matching OBS audio delay filter manually).
+- No per-frame tracking/smoothing — each frame's detections are independent.
+  This means occasional one-frame detection gaps may briefly unblur a plate.
+  (Lower the confidence threshold to compensate.)
+- Memory usage scales with delay × resolution × fps. A 5 s delay at 1080p60
+  holds ~2.5 GB of frame data in RAM.
 
-Image enhancement (low light) models are taken from:
+## Attribution
 
-- https://github.com/PINTO0309/PINTO_model_zoo/tree/main/213_TBEFN
-- https://github.com/PINTO0309/PINTO_model_zoo/tree/main/372_URetinex-Net
-- https://github.com/PINTO0309/PINTO_model_zoo/tree/main/370_Semantic-Guided-Low-Light-Image-Enhancement
+This plugin is a fork of
+[royshil/obs-backgroundremoval](https://github.com/royshil/obs-backgroundremoval)
+with its portrait-segmentation logic replaced by license plate detection. The
+original plugin's cross-platform CMake, CI, and ONNX Runtime wiring are reused
+directly. Thanks to Roy Shilkrot and Kaito Udagawa for that scaffolding.
 
-Some more information about how I built it: https://www.morethantechnical.com/2021/04/15/obs-plugin-for-portrait-background-removal-with-onnx-sinet-model/ and https://www.morethantechnical.com/2023/05/20/building-an-obs-background-removal-plugin-a-walkthrough/
-
-### Code Walkthrough
-
-This video on YouTube will take you through the major parts of the code and explain them.
-
-<div align="center">
-  <a href="https://youtu.be/iFQtcJg0Wsk" target="_blank">
-    <img width="50%" src="https://img.youtube.com/vi/iFQtcJg0Wsk/maxresdefault.jpg"/>
-  </a>
-</div>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=royshil/obs-backgroundremoval&type=Date&theme=dark" />
-  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=royshil/obs-backgroundremoval&type=Date" />
-  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=royshil/obs-backgroundremoval&type=Date" />
-</picture>
+The plate detector is [fast-alpr](https://github.com/ankandrew/fast-alpr)'s
+pretrained YOLOv9-t end2end ONNX model.
 
 ---
 
 > SPDX-FileCopyrightText: 2021-2026 Roy Shilkrot <roy.shil@gmail.com>  
 > SPDX-FileCopyrightText: 2023-2026 Kaito Udagawa <umireon@kaito.tokyo>  
+> SPDX-FileCopyrightText: 2026 Felipe Reyes  
 >
 > SPDX-License-Identifier: GPL-3.0-or-later  
