@@ -32,7 +32,12 @@ std::wstring toWide(const std::string &utf8)
 }
 #endif
 
-bool tryAppendProvider(Ort::SessionOptions &options, const std::string &useGPU, std::string &actualProviderOut)
+// Parameters are only referenced when at least one execution provider header
+// shipped with the linked ONNX Runtime. The Linux prebuilt only ships the
+// CPU EP, in which case every #ifdef branch compiles out and the parameters
+// would otherwise trip -Werror=unused-parameter.
+bool tryAppendProvider([[maybe_unused]] Ort::SessionOptions &options, [[maybe_unused]] const std::string &useGPU,
+		       [[maybe_unused]] std::string &actualProviderOut)
 {
 #ifdef HAVE_ONNXRUNTIME_CUDA_EP
 	if (useGPU == USEGPU_CUDA) {

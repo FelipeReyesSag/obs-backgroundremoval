@@ -122,7 +122,7 @@ jobs:
           PATH: '${{ env.FILTERED_PATH }}'
         run: |
           ./scripts/lipo_vcpkg_macos.sh \
-            ./.deps_vendor/vcpkg_installed_universal/universal-osx-obs \
+            ./.deps_vendor/vcpkg_installed/universal-osx-obs \
             ./.deps_vendor/vcpkg_installed_arm64/arm64-osx-obs \
             ./.deps_vendor/vcpkg_installed_x64/x64-osx-obs
 
