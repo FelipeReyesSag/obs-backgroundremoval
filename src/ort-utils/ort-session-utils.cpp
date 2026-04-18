@@ -1,11 +1,9 @@
-// SPDX-FileCopyrightText: 2021-2026 Roy Shilkrot <roy.shil@gmail.com>
-// SPDX-FileCopyrightText: 2023-2026 Kaito Udagawa <umireon@kaito.tokyo>
+// SPDX-FileCopyrightText: 2026 Felipe Reyes
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <onnxruntime_cxx_api.h>
 #include <cpu_provider_factory.h>
-#include <filesystem>
 
 #if defined(__APPLE__)
 #include <coreml_provider_factory.h>
@@ -14,162 +12,170 @@
 #ifdef _WIN32
 #include <wchar.h>
 #include <windows.h>
-#endif // _WIN32
+#endif
 
 #include <obs-module.h>
 
 #include "ort-session-utils.hpp"
-#include "consts.h"
+#include "../plate-blur-consts.h"
 #include "plugin-support.h"
 
-int createOrtSession(filter_data *tf)
+namespace {
+
+#ifdef _WIN32
+std::wstring toWide(const std::string &utf8)
 {
-	if (tf->model.get() == nullptr) {
-		obs_log(LOG_ERROR, "Model object is not initialized");
-		return OBS_BGREMOVAL_ORT_SESSION_ERROR_INVALID_MODEL;
+	int outLength = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
+	std::wstring wide(outLength, L'\0');
+	MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, wide.data(), outLength);
+	return wide;
+}
+#endif
+
+bool tryAppendProvider(Ort::SessionOptions &options, const std::string &useGPU, std::string &actualProviderOut)
+{
+#ifdef HAVE_ONNXRUNTIME_CUDA_EP
+	if (useGPU == USEGPU_CUDA) {
+		Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(options, 0));
+		actualProviderOut = USEGPU_CUDA;
+		return true;
+	}
+#endif
+#ifdef HAVE_ONNXRUNTIME_ROCM_EP
+	if (useGPU == USEGPU_ROCM) {
+		Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(options, 0));
+		actualProviderOut = USEGPU_ROCM;
+		return true;
+	}
+#endif
+#ifdef HAVE_ONNXRUNTIME_MIGRAPHX_EP
+	if (useGPU == USEGPU_MIGRAPHX) {
+		Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(options, 0));
+		actualProviderOut = USEGPU_MIGRAPHX;
+		return true;
+	}
+#endif
+#ifdef HAVE_ONNXRUNTIME_TENSORRT_EP
+	if (useGPU == USEGPU_TENSORRT) {
+		Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(options, 0));
+		actualProviderOut = USEGPU_TENSORRT;
+		return true;
+	}
+#endif
+#ifdef HAVE_ONNXRUNTIME_DML_EP
+	if (useGPU == USEGPU_DIRECTML) {
+		Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_DML(options, 0));
+		actualProviderOut = USEGPU_DIRECTML;
+		return true;
+	}
+#endif
+#if defined(__APPLE__)
+	if (useGPU == USEGPU_COREML) {
+		// CoreML is flaky on dynamic shapes. Keep a safety net available at
+		// runtime by allowing CPU-only fallback inside CoreML if needed.
+		uint32_t coreml_flags = COREML_FLAG_ENABLE_ON_SUBGRAPH;
+		Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(options, coreml_flags));
+		actualProviderOut = USEGPU_COREML;
+		return true;
+	}
+#endif
+	return false;
+}
+
+} // namespace
+
+int createOrtSession(ORTModelData &model, const std::string &modelPath, const std::string &useGPU, uint32_t numThreads,
+		     std::string &actualProviderOut)
+{
+	if (modelPath.empty()) {
+		obs_log(LOG_ERROR, "Empty model path");
+		return OBS_PLATE_BLUR_ORT_SESSION_ERROR_FILE_NOT_FOUND;
 	}
 
 	Ort::SessionOptions sessionOptions;
-
 	sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-	if (tf->useGPU != USEGPU_CPU) {
+
+	if (useGPU != USEGPU_CPU) {
 		sessionOptions.DisableMemPattern();
 		sessionOptions.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
 	} else {
-		sessionOptions.SetInterOpNumThreads(tf->numThreads);
-		sessionOptions.SetIntraOpNumThreads(tf->numThreads);
+		sessionOptions.SetInterOpNumThreads(static_cast<int>(numThreads));
+		sessionOptions.SetIntraOpNumThreads(static_cast<int>(numThreads));
 	}
 
-	char *modelFilepath_rawPtr = obs_module_file(tf->modelSelection.c_str());
-
-	if (modelFilepath_rawPtr == nullptr) {
-		obs_log(LOG_ERROR, "Unable to get model filename %s from plugin.", tf->modelSelection.c_str());
-		return OBS_BGREMOVAL_ORT_SESSION_ERROR_FILE_NOT_FOUND;
+	actualProviderOut = USEGPU_CPU;
+	try {
+		if (useGPU != USEGPU_CPU) {
+			if (!tryAppendProvider(sessionOptions, useGPU, actualProviderOut)) {
+				obs_log(LOG_WARNING, "Requested provider '%s' not compiled in; falling back to CPU",
+					useGPU.c_str());
+			}
+		}
+	} catch (const std::exception &e) {
+		obs_log(LOG_WARNING, "Failed to append provider '%s' (%s); falling back to CPU", useGPU.c_str(),
+			e.what());
+		actualProviderOut = USEGPU_CPU;
 	}
-
-	std::string modelFilepath_s(modelFilepath_rawPtr);
-
-#if _WIN32
-	int outLength = MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, modelFilepath_rawPtr, -1, nullptr, 0);
-	tf->modelFilepath = std::wstring(outLength, L'\0');
-	MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, modelFilepath_rawPtr, -1, tf->modelFilepath.data(), outLength);
-#else
-	tf->modelFilepath = std::string(modelFilepath_rawPtr);
-#endif
-
-	bfree(modelFilepath_rawPtr);
 
 	try {
-#ifdef HAVE_ONNXRUNTIME_CUDA_EP
-		if (tf->useGPU == USEGPU_CUDA) {
-			Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sessionOptions, 0));
-		}
+#ifdef _WIN32
+		const std::wstring wpath = toWide(modelPath);
+		model.session.reset(new Ort::Session(*model.env, wpath.c_str(), sessionOptions));
+#else
+		model.session.reset(new Ort::Session(*model.env, modelPath.c_str(), sessionOptions));
 #endif
-#ifdef HAVE_ONNXRUNTIME_ROCM_EP
-		if (tf->useGPU == USEGPU_ROCM) {
-			Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(sessionOptions, 0));
-		}
-#endif
-#ifdef HAVE_ONNXRUNTIME_MIGRAPHX_EP
-		if (tf->useGPU == USEGPU_MIGRAPHX) {
-			Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(sessionOptions, 0));
-		}
-#endif
-#ifdef HAVE_ONNXRUNTIME_TENSORRT_EP
-		if (tf->useGPU == USEGPU_TENSORRT) {
-			Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sessionOptions, 0));
-		}
-#endif
-#if defined(__APPLE__)
-		if (tf->useGPU == USEGPU_COREML) {
-			uint32_t coreml_flags = 0;
-			coreml_flags |= COREML_FLAG_ENABLE_ON_SUBGRAPH;
-			Ort::ThrowOnError(
-				OrtSessionOptionsAppendExecutionProvider_CoreML(sessionOptions, coreml_flags));
-		}
-#endif
-		tf->session.reset(new Ort::Session(*tf->env, tf->modelFilepath.c_str(), sessionOptions));
 	} catch (const std::exception &e) {
-		obs_log(LOG_ERROR, "%s", e.what());
-		return OBS_BGREMOVAL_ORT_SESSION_ERROR_STARTUP;
+		obs_log(LOG_ERROR, "Failed to create ONNX session: %s", e.what());
+		return OBS_PLATE_BLUR_ORT_SESSION_ERROR_STARTUP;
 	}
 
 	Ort::AllocatorWithDefaultOptions allocator;
+	model.inputNames.clear();
+	model.outputNames.clear();
+	model.inputDims.clear();
+	model.outputDims.clear();
 
-	tf->model->populateInputOutputNames(tf->session, tf->inputNames, tf->outputNames);
+	const size_t inputCount = model.session->GetInputCount();
+	const size_t outputCount = model.session->GetOutputCount();
 
-	if (!tf->model->populateInputOutputShapes(tf->session, tf->inputDims, tf->outputDims)) {
-		obs_log(LOG_ERROR, "Unable to get model input and output shapes");
-		return OBS_BGREMOVAL_ORT_SESSION_ERROR_INVALID_INPUT_OUTPUT;
+	for (size_t i = 0; i < inputCount; ++i) {
+		model.inputNames.push_back(model.session->GetInputNameAllocated(i, allocator));
+		auto shape = model.session->GetInputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
+		// Any dynamic dim becomes 1 here; callers fill in real sizes at inference time.
+		for (auto &d : shape) {
+			if (d < 0)
+				d = 1;
+		}
+		model.inputDims.push_back(std::move(shape));
+	}
+	for (size_t i = 0; i < outputCount; ++i) {
+		model.outputNames.push_back(model.session->GetOutputNameAllocated(i, allocator));
+		auto shape = model.session->GetOutputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
+		for (auto &d : shape) {
+			if (d < 0)
+				d = 1;
+		}
+		model.outputDims.push_back(std::move(shape));
 	}
 
-	for (size_t i = 0; i < tf->inputNames.size(); i++) {
-		obs_log(LOG_INFO, "Model %s input %d: name %s shape (%d dim) %d x %d x %d x %d",
-			tf->modelSelection.c_str(), (int)i, tf->inputNames[i].get(), (int)tf->inputDims[i].size(),
-			(int)tf->inputDims[i][0], ((int)tf->inputDims[i].size() > 1) ? (int)tf->inputDims[i][1] : 0,
-			((int)tf->inputDims[i].size() > 2) ? (int)tf->inputDims[i][2] : 0,
-			((int)tf->inputDims[i].size() > 3) ? (int)tf->inputDims[i][3] : 0);
-	}
-	for (size_t i = 0; i < tf->outputNames.size(); i++) {
-		obs_log(LOG_INFO, "Model %s output %d: name %s shape (%d dim) %d x %d x %d x %d",
-			tf->modelSelection.c_str(), (int)i, tf->outputNames[i].get(), (int)tf->outputDims[i].size(),
-			(int)tf->outputDims[i][0], ((int)tf->outputDims[i].size() > 1) ? (int)tf->outputDims[i][1] : 0,
-			((int)tf->outputDims[i].size() > 2) ? (int)tf->outputDims[i][2] : 0,
-			((int)tf->outputDims[i].size() > 3) ? (int)tf->outputDims[i][3] : 0);
+	if (inputCount == 0 || outputCount == 0) {
+		obs_log(LOG_ERROR, "Model has zero inputs or outputs");
+		return OBS_PLATE_BLUR_ORT_SESSION_ERROR_INVALID_INPUT_OUTPUT;
 	}
 
-	// Allocate buffers
-	tf->model->allocateTensorBuffers(tf->inputDims, tf->outputDims, tf->outputTensorValues, tf->inputTensorValues,
-					 tf->inputTensor, tf->outputTensor);
-
-	return OBS_BGREMOVAL_ORT_SESSION_SUCCESS;
-}
-
-bool runFilterModelInference(filter_data *tf, const cv::Mat &imageBGRA, cv::Mat &output)
-{
-	if (tf->session.get() == nullptr) {
-		// Onnx runtime session is not initialized. Problem in initialization
-		return false;
+	obs_log(LOG_INFO, "ONNX Runtime initialized with provider: %s", actualProviderOut.c_str());
+	for (size_t i = 0; i < inputCount; ++i) {
+		const auto &d = model.inputDims[i];
+		obs_log(LOG_INFO, "  input[%zu] name=%s dims=[%lld,%lld,%lld,%lld]", i, model.inputNames[i].get(),
+			d.size() > 0 ? (long long)d[0] : -1, d.size() > 1 ? (long long)d[1] : -1,
+			d.size() > 2 ? (long long)d[2] : -1, d.size() > 3 ? (long long)d[3] : -1);
 	}
-	if (tf->model.get() == nullptr) {
-		// Model object is not initialized
-		return false;
+	for (size_t i = 0; i < outputCount; ++i) {
+		const auto &d = model.outputDims[i];
+		obs_log(LOG_INFO, "  output[%zu] name=%s dims=[%lld,%lld,%lld]", i, model.outputNames[i].get(),
+			d.size() > 0 ? (long long)d[0] : -1, d.size() > 1 ? (long long)d[1] : -1,
+			d.size() > 2 ? (long long)d[2] : -1);
 	}
 
-	// To RGB
-	cv::Mat imageRGB;
-	cv::cvtColor(imageBGRA, imageRGB, cv::COLOR_BGRA2RGB);
-
-	// Resize to network input size
-	uint32_t inputWidth, inputHeight;
-	tf->model->getNetworkInputSize(tf->inputDims, inputWidth, inputHeight);
-
-	cv::Mat resizedImageRGB;
-	cv::resize(imageRGB, resizedImageRGB, cv::Size(inputWidth, inputHeight));
-
-	// Prepare input to nework
-	cv::Mat resizedImage, preprocessedImage;
-	resizedImageRGB.convertTo(resizedImage, CV_32F);
-
-	tf->model->prepareInputToNetwork(resizedImage, preprocessedImage);
-
-	tf->model->loadInputToTensor(preprocessedImage, inputWidth, inputHeight, tf->inputTensorValues);
-
-	// Run network inference
-	tf->model->runNetworkInference(tf->session, tf->inputNames, tf->outputNames, tf->inputTensor, tf->outputTensor);
-
-	// Get output
-	// Map network output to cv::Mat
-	cv::Mat outputImage = tf->model->getNetworkOutput(tf->outputDims, tf->outputTensorValues);
-
-	// Assign output to input in some models that have temporal information
-	tf->model->assignOutputToInput(tf->outputTensorValues, tf->inputTensorValues);
-
-	// Post-process output. The image will now be in [0,1] float, BHWC format
-	tf->model->postprocessOutput(outputImage);
-
-	// Convert [0,1] float to CV_8U [0,255]
-	outputImage.convertTo(output, CV_8U, 255.0);
-
-	return true;
+	return OBS_PLATE_BLUR_ORT_SESSION_SUCCESS;
 }

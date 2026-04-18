@@ -33,13 +33,13 @@
   },
   "platformConfig": {
     "macos": {
-      "bundleId": "com.royshilkrot.obs-backgroundremoval"
+      "bundleId": "com.felipereyes.obs-plate-blur"
     }
   },
-  "name": "obs-backgroundremoval",
-  "displayName": "OBS Background Removal",
-  "version": "1.4.0",
-  "author": "Roy Shilkrot",
-  "website": "https://royshil.github.io/obs-backgroundremoval/",
-  "email": "roy.shil@gmail.com"
+  "name": "obs-plate-blur",
+  "displayName": "Plate Blur for OBS",
+  "version": "0.1.0",
+  "author": "Felipe Reyes",
+  "website": "https://github.com/felipereyes/obs-plate-blur",
+  "email": "you@example.com"
 }

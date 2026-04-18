@@ -1,5 +1,4 @@
-// SPDX-FileCopyrightText: 2021-2026 Roy Shilkrot <roy.shil@gmail.com>
-// SPDX-FileCopyrightText: 2023-2026 Kaito Udagawa <umireon@kaito.tokyo>
+// SPDX-FileCopyrightText: 2026 Felipe Reyes
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -8,17 +7,20 @@
 
 #include <onnxruntime_cxx_api.h>
 
+#include <memory>
+#include <vector>
+
+// Minimal ONNX Runtime per-session state. We hold the env, session, and the
+// input/output metadata we introspected at load time. Tensor buffers are
+// allocated per-inference inside the worker since YOLO's end2end output has
+// a dynamic row count.
 struct ORTModelData {
 	std::unique_ptr<Ort::Session> session;
 	std::unique_ptr<Ort::Env> env;
 	std::vector<Ort::AllocatedStringPtr> inputNames;
 	std::vector<Ort::AllocatedStringPtr> outputNames;
-	std::vector<Ort::Value> inputTensor;
-	std::vector<Ort::Value> outputTensor;
 	std::vector<std::vector<int64_t>> inputDims;
 	std::vector<std::vector<int64_t>> outputDims;
-	std::vector<std::vector<float>> outputTensorValues;
-	std::vector<std::vector<float>> inputTensorValues;
 };
 
 #endif /* ORTMODELDATA_H */

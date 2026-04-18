@@ -1,16 +1,16 @@
 {
-  "display_name": "OBS Background Removal",
-  "id": "com.royshilkrot.obs-backgroundremoval",
-  "version": "1.4.0",
-  "name": "obs-backgroundremoval",
-  "description": "OBS Plugin: Portrait Background Removal / Virtual Green-screen and Low-Light Enhancement",
-  "long_description": "A plugin for OBS Studio that allows you to replace the background in portrait images and video, as well as enhance low-light scenes.",
+  "display_name": "Plate Blur for OBS",
+  "id": "com.felipereyes.obs-plate-blur",
+  "version": "0.1.0",
+  "name": "obs-plate-blur",
+  "description": "OBS Plugin: Real-time license-plate detection and blur for livestreams. Adds a configurable ~3 s delay to give AI inference time to cover every frame.",
+  "long_description": "An OBS Studio filter that automatically detects license plates in the video feed and blurs them. Designed for IRL / driving streamers who want an extra layer of privacy on top of manually hiding plates.\n\nThe filter intentionally introduces a short delay (default 3 s, configurable 1\u20135 s) so the detector can run on every single frame on a GPU without dropping any. Detection is powered by the fast-alpr YOLOv9-t ONNX model. The plugin never reads plate text \u2014 it only locates and blurs.",
   "os_arch": "windows-x64, macos, ubuntu-x86_64",
   "urls": {
-    "repository": "https://github.com/royshil/obs-backgroundremoval",
-    "website": "https://royshil.github.io/obs-backgroundremoval/",
-    "support": "https://github.com/royshil/obs-backgroundremoval/issues"
+    "repository": "https://github.com/felipereyes/obs-plate-blur",
+    "website": "https://github.com/felipereyes/obs-plate-blur",
+    "support": "https://github.com/felipereyes/obs-plate-blur/issues"
   },
-  "has_banner": true,
-  "has_icon": true
+  "has_banner": false,
+  "has_icon": false
 }

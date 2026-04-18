@@ -1,4 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
+# SPDX-FileCopyrightText: 2026 Felipe Reyes
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -210,10 +211,9 @@ target_sources(
     src/obs-utils/obs-config-utils.cpp
     src/update-checker/github-utils.cpp
     src/update-checker/update-checker.cpp
-    src/background-filter-info.c
-    src/background-filter.cpp
-    src/enhance-filter.cpp
-    src/enhance-filter-info.c
+    src/yolo/PlateDetector.cpp
+    src/plate-blur-filter-info.c
+    src/plate-blur-filter.cpp
 )
 target_compile_options(
   ${CMAKE_PROJECT_NAME}

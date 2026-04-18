@@ -1,0 +1,126 @@
+// SPDX-FileCopyrightText: 2026 Felipe Reyes
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Two-pass separable Gaussian blur composited onto the original frame using a
+// 1-channel blur mask.  Pass "BlurH" runs the horizontal kernel into an
+// intermediate texrender; pass "BlurVComposite" runs the vertical kernel and
+// blends the result with the original frame using the mask's alpha weight.
+//
+// The `image` texture parameter is bound by OBS's filter path to the filter's
+// own input; we don't sample it.  The delayed frame we actually want to show
+// is passed in via `delayedFrame`.
+
+uniform float4x4 ViewProj;
+uniform texture2d image;          // bound by OBS filter path; unused
+uniform texture2d delayedFrame;   // what we actually render
+uniform texture2d blurredH;       // horizontally-blurred delayedFrame (for pass 2)
+uniform texture2d blurMask;       // R8; 1 inside (padded) plate boxes, 0 outside
+uniform float2 texel_size;        // 1/width, 1/height of the source frame
+uniform float blur_radius_px;     // user-configurable blur radius in pixels
+
+sampler_state textureSampler {
+	Filter    = Linear;
+	AddressU  = Clamp;
+	AddressV  = Clamp;
+};
+
+struct VertDataIn {
+	float4 pos : POSITION;
+	float2 uv  : TEXCOORD0;
+};
+
+struct VertDataOut {
+	float4 pos : POSITION;
+	float2 uv  : TEXCOORD0;
+};
+
+VertDataOut VSDefault(VertDataIn v_in)
+{
+	VertDataOut v;
+	v.pos = mul(float4(v_in.pos.xyz, 1.0), ViewProj);
+	v.uv  = v_in.uv;
+	return v;
+}
+
+// 15-tap 1D Gaussian.  sigma scales with blur_radius_px.  Weights are
+// computed per-pixel; it's a fixed but small extra arithmetic cost vs. a
+// precomputed table and avoids any uniform-array constraints in OBS effects.
+float gaussian_weight(float i, float sigma_inv_sqr)
+{
+	return exp(-0.5 * i * i * sigma_inv_sqr);
+}
+
+float4 blur_1d(texture2d tex, float2 uv, float2 step, float radius)
+{
+	const int TAPS = 7; // 2*TAPS + 1 samples
+	float sigma = max(1.0, radius * 0.5);
+	float sigma_inv_sqr = 1.0 / (sigma * sigma);
+
+	float4 sum = tex.Sample(textureSampler, uv) * gaussian_weight(0.0, sigma_inv_sqr);
+	float total = gaussian_weight(0.0, sigma_inv_sqr);
+
+	for (int i = 1; i <= TAPS; i++) {
+		float w = gaussian_weight(float(i), sigma_inv_sqr);
+		float2 off = step * (float(i) * (radius / float(TAPS)));
+		sum += tex.Sample(textureSampler, uv + off) * w;
+		sum += tex.Sample(textureSampler, uv - off) * w;
+		total += 2.0 * w;
+	}
+	return sum / total;
+}
+
+float4 PSBlurH(VertDataOut v_in) : TARGET
+{
+	return blur_1d(delayedFrame, v_in.uv, float2(texel_size.x, 0.0), blur_radius_px);
+}
+
+float4 PSBlurVComposite(VertDataOut v_in) : TARGET
+{
+	float4 orig = delayedFrame.Sample(textureSampler, v_in.uv);
+	float m = blurMask.Sample(textureSampler, v_in.uv).r;
+	if (m <= 0.003) {
+		return orig;
+	}
+	float4 blurred = blur_1d(blurredH, v_in.uv, float2(0.0, texel_size.y), blur_radius_px);
+	return lerp(orig, blurred, m);
+}
+
+float4 PSDebugOverlay(VertDataOut v_in) : TARGET
+{
+	float4 orig = delayedFrame.Sample(textureSampler, v_in.uv);
+	float m = blurMask.Sample(textureSampler, v_in.uv).r;
+	if (m <= 0.003) {
+		return orig;
+	}
+	// Tint detected regions red so the user can tune confidence threshold.
+	float3 tinted = lerp(orig.rgb, float3(1.0, 0.15, 0.15), 0.55 * m);
+	return float4(tinted, orig.a);
+}
+
+technique BlurH
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSBlurH(v_in);
+	}
+}
+
+technique BlurVComposite
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSBlurVComposite(v_in);
+	}
+}
+
+technique DebugOverlay
+{
+	pass
+	{
+		vertex_shader = VSDefault(v_in);
+		pixel_shader  = PSDebugOverlay(v_in);
+	}
+}
