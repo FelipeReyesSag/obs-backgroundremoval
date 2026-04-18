@@ -69,6 +69,7 @@ namespace {
 // users debugging a "nothing gets blurred" scenario can immediately see what
 // the model is actually emitting.
 std::atomic<bool> g_logged_first_shape{false};
+std::atomic<bool> g_logged_first_row{false};
 std::atomic<int64_t> g_last_count_log_ms{0};
 
 void log_throttled_detection_summary(int64_t totalRows, int totalAboveThreshold, float threshold, float topConf,
@@ -273,6 +274,35 @@ std::vector<PlateBox> detectPlates(ORTModelData &model, const cv::Mat &imageBGRA
 		return channelFirst ? data[static_cast<int64_t>(field) * numDets + det]
 				    : data[det * numFields + static_cast<int64_t>(field)];
 	};
+
+	// One-shot dump of the first detection's raw fields the first time we
+	// ever see N>0. This is the definitive way to identify which field is the
+	// score (all-zeros at one index → that's class_id, not score) and what
+	// the coordinate range looks like (pixel vs normalized).
+	if (numDets > 0 && !g_logged_first_row.exchange(true)) {
+		std::string fields;
+		for (int64_t f = 0; f < numFields; ++f) {
+			char buf[32];
+			snprintf(buf, sizeof(buf), "%s%.4f", f == 0 ? "" : ", ", fetch(0, f));
+			fields += buf;
+		}
+		obs_log(LOG_INFO, "PlateDetector: first non-empty detection raw fields=[%s]", fields.c_str());
+		// Also dump per-field min/max across all detections in this batch so
+		// the scale/range of each field is visible at a glance.
+		for (int64_t f = 0; f < numFields; ++f) {
+			float lo = fetch(0, f);
+			float hi = lo;
+			for (int64_t i = 1; i < numDets; ++i) {
+				const float v = fetch(i, f);
+				if (v < lo)
+					lo = v;
+				if (v > hi)
+					hi = v;
+			}
+			obs_log(LOG_INFO, "PlateDetector:   field[%lld] min=%.4f max=%.4f", static_cast<long long>(f),
+				lo, hi);
+		}
+	}
 
 	const float invScale = (scale > 0.0f) ? (1.0f / scale) : 1.0f;
 	const int srcW = imageBGRA.cols;
