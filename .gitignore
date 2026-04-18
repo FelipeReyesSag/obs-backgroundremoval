@@ -5,3 +5,5 @@
 .vscode/
 build_*/
 release/
+# Model weights are fetched by scripts/fetch_model.sh; do not commit them.
+data/models/*.onnx
