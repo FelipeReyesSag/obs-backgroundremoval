@@ -8,8 +8,10 @@
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
+#include <cstdint>
 #include <cstring>
 #include <exception>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <regex>
@@ -28,7 +30,6 @@
 #include "ort-utils/ort-session-utils.hpp"
 #include "obs-utils/obs-utils.hpp"
 #include "yolo/PlateDetector.hpp"
-#include "update-checker/update-checker.h"
 
 namespace {
 
@@ -226,7 +227,7 @@ void plate_blur_worker_loop(std::shared_ptr<plate_blur_filter> tf)
 
 			// Pick the OLDEST queued slot (FIFO) so every captured frame gets
 			// inference before the read pointer reaches it.
-			uint64_t oldest_seq = UINT64_MAX;
+			uint64_t oldest_seq = std::numeric_limits<uint64_t>::max();
 			bool found = false;
 			for (size_t i = 0; i < tf->ring.size(); ++i) {
 				if (tf->ring[i].state == SLOT_QUEUED && tf->ring[i].seq < oldest_seq) {

@@ -1,8 +1,8 @@
-# CONTRIBUTING.md for obs-backgroundremoval
+# CONTRIBUTING.md for obs-plate-blur
 
 ## Legal and Community Guidelines
 
-To keep the `obs-backgroundremoval` project safe and reliable for everyone including its users, its contributors, and its maintainers, those who are involved in development of this project must know the following terms. Whenever we receive your Pull Request, we will explicitly ask you to confirm that your PR conforms to our policy.
+To keep the `obs-plate-blur` project safe and reliable for everyone including its users, its contributors, and its maintainers, those who are involved in development of this project must know the following terms. Whenever we receive your Pull Request, we will explicitly ask you to confirm that your PR conforms to our policy.
 
 ### 1. Licensing and Patent Grant
 
@@ -18,7 +18,7 @@ To ensure the transparency of our codebase, we require all new code to include t
  * SPDX-FileCopyrightText: Copyright (C) [Year] [Author Name] [Email]
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * OBS Plugin: Portrait Background Removal / Virtual Green-screen and Low-Light Enhancement
+ * OBS Plugin: Plate Blur \u2014 real-time license plate detection and blur
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

@@ -1,6 +1,6 @@
 ## Pull Request Checklist
 
-Please read our latest [CONTRIBUTING.md](https://github.com/royshil/obs-backgroundremoval/blob/main/CONTRIBUTING.md).
+Please read our latest [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 - [ ] I have read the latest CONTRIBUTING.md.
 - [ ] I have acknowledged the licensing and patent grant policy.
