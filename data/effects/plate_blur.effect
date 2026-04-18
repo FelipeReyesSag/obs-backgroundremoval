@@ -46,25 +46,53 @@ VertDataOut VSDefault(VertDataIn v_in)
 // 15-tap 1D Gaussian.  sigma scales with blur_radius_px.  Weights are
 // computed per-pixel; it's a fixed but small extra arithmetic cost vs. a
 // precomputed table and avoids any uniform-array constraints in OBS effects.
+//
+// NOTE: OBS's effect → GLSL transpiler does not allow `texture2d` as a
+// function parameter. The blur kernel is therefore specialized per source
+// texture (`blur_h_delayed` samples `delayedFrame`; `blur_v_blurredH`
+// samples `blurredH`). Keep the two bodies in sync.
 float gaussian_weight(float i, float sigma_inv_sqr)
 {
 	return exp(-0.5 * i * i * sigma_inv_sqr);
 }
 
-float4 blur_1d(texture2d tex, float2 uv, float2 step, float radius)
+float4 blur_h_delayed(float2 uv, float radius)
 {
 	const int TAPS = 7; // 2*TAPS + 1 samples
 	float sigma = max(1.0, radius * 0.5);
 	float sigma_inv_sqr = 1.0 / (sigma * sigma);
+	float2 step = float2(texel_size.x, 0.0);
 
-	float4 sum = tex.Sample(textureSampler, uv) * gaussian_weight(0.0, sigma_inv_sqr);
-	float total = gaussian_weight(0.0, sigma_inv_sqr);
+	float w0 = gaussian_weight(0.0, sigma_inv_sqr);
+	float4 sum = delayedFrame.Sample(textureSampler, uv) * w0;
+	float total = w0;
 
 	for (int i = 1; i <= TAPS; i++) {
 		float w = gaussian_weight(float(i), sigma_inv_sqr);
 		float2 off = step * (float(i) * (radius / float(TAPS)));
-		sum += tex.Sample(textureSampler, uv + off) * w;
-		sum += tex.Sample(textureSampler, uv - off) * w;
+		sum += delayedFrame.Sample(textureSampler, uv + off) * w;
+		sum += delayedFrame.Sample(textureSampler, uv - off) * w;
+		total += 2.0 * w;
+	}
+	return sum / total;
+}
+
+float4 blur_v_blurredH(float2 uv, float radius)
+{
+	const int TAPS = 7;
+	float sigma = max(1.0, radius * 0.5);
+	float sigma_inv_sqr = 1.0 / (sigma * sigma);
+	float2 step = float2(0.0, texel_size.y);
+
+	float w0 = gaussian_weight(0.0, sigma_inv_sqr);
+	float4 sum = blurredH.Sample(textureSampler, uv) * w0;
+	float total = w0;
+
+	for (int i = 1; i <= TAPS; i++) {
+		float w = gaussian_weight(float(i), sigma_inv_sqr);
+		float2 off = step * (float(i) * (radius / float(TAPS)));
+		sum += blurredH.Sample(textureSampler, uv + off) * w;
+		sum += blurredH.Sample(textureSampler, uv - off) * w;
 		total += 2.0 * w;
 	}
 	return sum / total;
@@ -72,7 +100,7 @@ float4 blur_1d(texture2d tex, float2 uv, float2 step, float radius)
 
 float4 PSBlurH(VertDataOut v_in) : TARGET
 {
-	return blur_1d(delayedFrame, v_in.uv, float2(texel_size.x, 0.0), blur_radius_px);
+	return blur_h_delayed(v_in.uv, blur_radius_px);
 }
 
 float4 PSBlurVComposite(VertDataOut v_in) : TARGET
@@ -82,7 +110,7 @@ float4 PSBlurVComposite(VertDataOut v_in) : TARGET
 	if (m <= 0.003) {
 		return orig;
 	}
-	float4 blurred = blur_1d(blurredH, v_in.uv, float2(0.0, texel_size.y), blur_radius_px);
+	float4 blurred = blur_v_blurredH(v_in.uv, blur_radius_px);
 	return lerp(orig, blurred, m);
 }
 
