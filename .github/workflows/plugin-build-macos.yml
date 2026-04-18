@@ -192,6 +192,26 @@ jobs:
         run: |
           cmake --install build_macos --config RelWithDebInfo --strip --prefix 'release/payload/Library/Application Support/obs-studio/plugins'
 
+      - name: Re-sign plugin bundle ad-hoc (no Developer ID)
+        if: ${{ !inputs.codesign-enabled }}
+        shell: bash --noprofile --norc -euo pipefail -O nullglob {0}
+        env:
+          BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
+          PATH: '${{ env.FILTERED_PATH }}'
+          KEEP_ENV_VARS: 'PLUGIN_NAME'
+          PLUGIN_NAME: '${{ steps.buildspec.outputs.NAME }}'
+        run: |
+          # cmake --install (re)copies dylibs into Contents/Frameworks AFTER
+          # Xcode's build-time ad-hoc signature was sealed, leaving the bundle
+          # signature stale. macOS then SIGKILLs OBS with "Code Signature
+          # Invalid" when it tries to dlopen the plugin. Re-sign everything
+          # ad-hoc here so the seal matches what's actually on disk. When
+          # codesign-enabled is true the dedicated signing step below handles
+          # this with a real Developer ID identity instead.
+          PLUGIN_BUNDLE="release/payload/Library/Application Support/obs-studio/plugins/${PLUGIN_NAME}.plugin"
+          codesign --force --deep --sign - "${PLUGIN_BUNDLE}"
+          codesign --verify --verbose "${PLUGIN_BUNDLE}"
+
       - name: Set up macOS Signing Certificates
         if: ${{ inputs.codesign-enabled }}
         id: codesign
