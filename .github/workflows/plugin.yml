@@ -41,7 +41,12 @@ jobs:
       VCPKG_BINARY_SOURCES: 'clear;http,https://vcpkg-obs.kaito.tokyo/{name}/{version}/{sha}'
       vcpkg-version: '2025.08.27'
       ort-version: v1.23.2
-      codesign-enabled: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) }}
+      # Codesigning + notarization require an Apple Developer Program account
+      # and the corresponding MACOS_SIGNING_* / MACOS_NOTARIZATION_* secrets.
+      # This fork ships unsigned .pkg files for now; flip to a tag-gated
+      # condition (and add the secrets) once you're ready to publish signed
+      # releases.
+      codesign-enabled: false
     secrets: inherit
 
   build-ubuntu:
