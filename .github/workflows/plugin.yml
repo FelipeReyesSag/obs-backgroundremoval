@@ -1,5 +1,6 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 
+# SPDX-FileCopyrightText: 2026 Felipe Reyes
 # SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
 #
 # SPDX-License-Identifier: Apache-2.0
@@ -19,6 +20,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# NOTE: Microsoft's last ONNX Runtime release that ships onnxruntime-osx-universal2
+# is v1.23.2. When bumping, keep the three build jobs below in sync.
+
 jobs:
   build-windows:
     permissions:
@@ -27,7 +31,7 @@ jobs:
     with:
       VCPKG_BINARY_SOURCES: 'clear;http,https://vcpkg-obs.kaito.tokyo/{name}/{version}/{sha}'
       vcpkg-version: '2025.08.27'
-      ort-version: v1.24.4
+      ort-version: v1.23.2
 
   build-macos:
     permissions:
@@ -36,7 +40,7 @@ jobs:
     with:
       VCPKG_BINARY_SOURCES: 'clear;http,https://vcpkg-obs.kaito.tokyo/{name}/{version}/{sha}'
       vcpkg-version: '2025.08.27'
-      ort-version: v1.24.4
+      ort-version: v1.23.2
       codesign-enabled: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) }}
     secrets: inherit
 
@@ -47,7 +51,7 @@ jobs:
     with:
       VCPKG_BINARY_SOURCES: 'clear;http,https://vcpkg-obs.kaito.tokyo/{name}/{version}/{sha}'
       vcpkg-version: '2025.08.27'
-      ort-version: v1.24.4
+      ort-version: v1.23.2
 
   accept-plugin:
     name: Accept Plugin CI

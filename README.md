@@ -37,44 +37,48 @@ Pre-built packages, when available:
 - **macOS** — `.pkg` (universal)
 - **Linux (Ubuntu)** — `.deb`
 
-### Fetch the model
-
-The ONNX model is not redistributed in this repository. Download it into
-`data/models/` before first run:
-
-```bash
-# macOS / Linux
-scripts/fetch_model.sh
-
-# Windows (PowerShell)
-powershell -ExecutionPolicy Bypass -File scripts/fetch_model.ps1
-```
-
-Both scripts download `yolo-v9-t-384-license-plate-end2end.onnx` from
-fast-alpr's GitHub releases.
+Pre-built installers bundle the YOLO model, so there is no separate model
+download step after install.
 
 ## Build from source
 
 Requires CMake 3.28+, a C++20 compiler, and the OBS plugin deps (pulled
-automatically by the preset). Follow the OBS plugin template's standard
-instructions:
+automatically by the preset). Two extra things are needed that the preset
+does **not** fetch for you:
+
+1. A prebuilt [ONNX Runtime](https://github.com/microsoft/onnxruntime/releases)
+   matching the pin in `.github/workflows/plugin.yml` (currently `v1.23.2`).
+   Download the platform-appropriate archive, extract it, and point
+   `-DONNXRUNTIME_ROOT=...` (or `$ENV:ONNXRUNTIME_ROOT`) at the extracted
+   directory. When unset, CMake looks at `.deps_vendor/onnxruntime` by default.
+2. The YOLOv9-t ONNX weights, which are fetched by:
+
+   ```bash
+   # macOS / Linux
+   scripts/fetch_model.sh
+
+   # Windows (PowerShell)
+   powershell -ExecutionPolicy Bypass -File scripts/fetch_model.ps1
+   ```
+
+   Run this once from the repo root before `cmake --preset ...`; the weights
+   are picked up at configure time and copied into the plugin bundle.
+
+Then:
 
 ```bash
+# macOS (universal)
+cmake --preset macos
+cmake --build --preset macos
+
 # Windows (Developer PowerShell)
 cmake --preset windows-x64
 cmake --build --preset windows-x64 --config RelWithDebInfo
 
-# macOS
-cmake --preset macos
-cmake --build --preset macos
-
-# Linux (requires libobs-dev, libonnxruntime-dev, libopencv-dev, libcurl-dev)
+# Linux (libobs-dev / libopencv-dev / libcurl-dev from apt)
 cmake --preset ubuntu-x86_64
 cmake --build --preset ubuntu-x86_64
 ```
-
-Then install the resulting plugin into OBS's plugins directory and copy the
-`data/` folder alongside it.
 
 ## Settings
 

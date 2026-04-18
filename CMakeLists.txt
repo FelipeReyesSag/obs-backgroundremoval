@@ -89,8 +89,6 @@ if(MSVC)
     "${CMAKE_CURRENT_SOURCE_DIR}/.deps"
     "${CMAKE_CURRENT_SOURCE_DIR}/.deps/obs-deps-qt6-${QT6_VERSION}-x64"
     "${CMAKE_CURRENT_SOURCE_DIR}/.deps/obs-deps-${PREBUILT_VERSION}-x64"
-    "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_x64/Release/vcpkg_installed/x64-windows-static-md"
-    "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_x64-prefix"
   )
 elseif(APPLE)
   list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/macos")
@@ -101,18 +99,9 @@ elseif(APPLE)
     "${CMAKE_CURRENT_SOURCE_DIR}/.deps"
     "${CMAKE_CURRENT_SOURCE_DIR}/.deps/obs-deps-qt6-${QT6_VERSION}-universal"
     "${CMAKE_CURRENT_SOURCE_DIR}/.deps/obs-deps-${PREBUILT_VERSION}-universal"
-    "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_universal_vcpkg_installed/universal-osx"
-    "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_universal-prefix"
-    "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/vcpkg_installed_universal/universal-osx-obs"
   )
 else()
   list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/linux")
-  list(
-    PREPEND
-    CMAKE_PREFIX_PATH
-    "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_x86_64/Release/vcpkg_installed/x64-linux"
-    "${CMAKE_CURRENT_SOURCE_DIR}/.deps_vendor/ort_x86_64-prefix"
-  )
 endif()
 
 if(VCPKG_TARGET_TRIPLET STREQUAL "")
@@ -175,24 +164,9 @@ if(NOT TARGET OpenCV::opencv_imgproc)
   add_library(OpenCV::opencv_imgproc ALIAS opencv_imgproc)
 endif()
 
-## ONNX Runtime
-find_package(onnxruntime CONFIG)
-
-if(NOT onnxruntime_FOUND AND PkgConfig_FOUND)
-  pkg_check_modules(PC_onnxruntime onnxruntime IMPORTED_TARGET)
-  if(PC_onnxruntime_FOUND)
-    add_library(onnxruntime::onnxruntime ALIAS PkgConfig::PC_onnxruntime)
-    set(onnxruntime_FOUND TRUE)
-  endif()
-endif()
-
-if(NOT onnxruntime_FOUND)
-  message(FATAL_ERROR "ONNX Runtime not found via CMake or pkg-config.")
-endif()
-
-if(NOT TARGET onnxruntime::onnxruntime)
-  add_library(onnxruntime::onnxruntime ALIAS onnxruntime)
-endif()
+## ONNX Runtime - use the Microsoft prebuilt binary distribution.
+include(OnnxRuntimeHelper)
+obs_plate_blur_setup_onnxruntime()
 
 # Plugin build definitions
 add_library(${CMAKE_PROJECT_NAME} MODULE)
@@ -220,17 +194,56 @@ target_compile_options(
   PRIVATE $<$<C_COMPILER_ID:Clang,AppleClang>:-Wno-error=unused-command-line-argument>
 )
 
+# Tell the plate-blur filter source which execution providers are available
+# at compile time so the UI and session-creation code gate themselves accordingly.
+if(HAVE_ONNXRUNTIME_COREML_EP)
+  target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HAVE_ONNXRUNTIME_COREML_EP=1)
+endif()
+if(HAVE_ONNXRUNTIME_DML_EP)
+  target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HAVE_ONNXRUNTIME_DML_EP=1)
+endif()
+if(HAVE_ONNXRUNTIME_CUDA_EP)
+  target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HAVE_ONNXRUNTIME_CUDA_EP=1)
+endif()
+
 if(APPLE)
   target_link_options(
     ${CMAKE_PROJECT_NAME}
     PRIVATE "-Wl,-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/src/exported_symbols_macos.txt"
   )
+
+  # Bundle every libonnxruntime*.dylib into <plugin>.plugin/Contents/Frameworks
+  # and let the loader resolve @rpath/... from @loader_path/../Frameworks.
+  foreach(_ort_runtime_file IN LISTS ONNXRUNTIME_RUNTIME_LIBS)
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE "${_ort_runtime_file}")
+    set_property(SOURCE "${_ort_runtime_file}" PROPERTY MACOSX_PACKAGE_LOCATION "Frameworks")
+    source_group("Frameworks" FILES "${_ort_runtime_file}")
+  endforeach()
+  set_property(TARGET ${CMAKE_PROJECT_NAME} APPEND PROPERTY INSTALL_RPATH "@loader_path/../Frameworks")
 elseif(MSVC)
   target_sources(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/exported_symbols_windows.def")
+
+  # Stage onnxruntime.dll (+ friends) into the build output directory and
+  # install them next to the plugin .dll.
+  foreach(_ort_runtime_file IN LISTS ONNXRUNTIME_RUNTIME_LIBS)
+    add_custom_command(
+      TARGET ${CMAKE_PROJECT_NAME}
+      POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_ort_runtime_file}" "$<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>"
+      VERBATIM
+    )
+  endforeach()
+  install(FILES ${ONNXRUNTIME_RUNTIME_LIBS} DESTINATION "obs-plugins/64bit")
 else()
   target_link_options(
     ${CMAKE_PROJECT_NAME}
     PRIVATE "-Wl,--version-script,${CMAKE_CURRENT_SOURCE_DIR}/src/exported_symbols_linux.map" "-Wl,-Bsymbolic"
+  )
+
+  set_property(TARGET ${CMAKE_PROJECT_NAME} APPEND PROPERTY INSTALL_RPATH "$ORIGIN")
+  install(
+    FILES ${ONNXRUNTIME_RUNTIME_LIBS}
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/obs-plugins"
   )
 endif()
 
