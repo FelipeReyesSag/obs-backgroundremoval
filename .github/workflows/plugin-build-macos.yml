@@ -147,6 +147,7 @@ jobs:
         env:
           BASH_ENV: '${{ env.CLEAN_BASH_ENV }}'
           PATH: '${{ env.FILTERED_PATH }}'
+          KEEP_ENV_VARS: 'ORT_VERSION'
           ORT_VERSION: ${{ inputs.ort-version }}
         run: |
           version="${ORT_VERSION#v}"
