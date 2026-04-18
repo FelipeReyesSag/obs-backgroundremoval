@@ -636,6 +636,24 @@ void plate_blur_filter_video_render(void *data, gs_effect_t *)
 
 	// 4. Upload delayed frame + blur mask to GPU textures.
 	cv::Mat mask = buildBlurMask(src_w, src_h, emit_boxes, tf->box_padding);
+
+	// One-shot diagnostic: confirm the render path actually receives boxes
+	// for an emitted (delayed) frame, with their pixel coords. If detection
+	// passes threshold but this log never fires, the boxes aren't reaching
+	// the render path (worker→ring→render handoff issue). If it fires but
+	// nothing is visually blurred, the issue is downstream (mask upload,
+	// shader UVs, etc.).
+	{
+		static std::atomic<bool> g_logged_first_render_box{false};
+		if (!emit_boxes.empty() && !g_logged_first_render_box.exchange(true)) {
+			const auto &b = emit_boxes.front();
+			obs_log(LOG_INFO,
+				"render: first delayed frame with boxes: src=%ux%u, n_boxes=%zu, "
+				"first=[%.0f,%.0f,%.0f,%.0f] conf=%.2f",
+				src_w, src_h, emit_boxes.size(), b.x1, b.y1, b.x2, b.y2, b.confidence);
+		}
+	}
+
 	uploadBGRATexture(&tf->delayed_tex, tf->delayed_tex_w, tf->delayed_tex_h, emit_pixels);
 	uploadR8Texture(&tf->mask_tex, tf->mask_tex_w, tf->mask_tex_h, mask);
 

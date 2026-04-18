@@ -316,6 +316,11 @@ std::vector<PlateBox> detectPlates(ORTModelData &model, const cv::Mat &imageBGRA
 	float topConf = 0.0f;
 	int passed = 0;
 
+	// One-shot dump of the first above-threshold detection (pre- and post-
+	// letterbox-undo). Lets us verify in the log whether the box sits on the
+	// plate or is offset/flipped relative to where we expect it.
+	static std::atomic<bool> g_logged_first_kept{false};
+
 	boxes.reserve(static_cast<size_t>(numDets));
 	for (int64_t i = 0; i < numDets; ++i) {
 		const float conf = fetch(i, fScore);
@@ -324,11 +329,15 @@ std::vector<PlateBox> detectPlates(ORTModelData &model, const cv::Mat &imageBGRA
 		if (conf < confidenceThreshold)
 			continue;
 		++passed;
+		const float rawX1 = fetch(i, fX1);
+		const float rawY1 = fetch(i, fY1);
+		const float rawX2 = fetch(i, fX2);
+		const float rawY2 = fetch(i, fY2);
 		// Un-letterbox the coordinates: subtract pad offsets, divide by scale.
-		float x1 = (fetch(i, fX1) - padX) * invScale;
-		float y1 = (fetch(i, fY1) - padY) * invScale;
-		float x2 = (fetch(i, fX2) - padX) * invScale;
-		float y2 = (fetch(i, fY2) - padY) * invScale;
+		float x1 = (rawX1 - padX) * invScale;
+		float y1 = (rawY1 - padY) * invScale;
+		float x2 = (rawX2 - padX) * invScale;
+		float y2 = (rawY2 - padY) * invScale;
 
 		x1 = std::clamp(x1, 0.0f, static_cast<float>(srcW - 1));
 		y1 = std::clamp(y1, 0.0f, static_cast<float>(srcH - 1));
@@ -337,6 +346,13 @@ std::vector<PlateBox> detectPlates(ORTModelData &model, const cv::Mat &imageBGRA
 
 		if (x2 <= x1 || y2 <= y1)
 			continue;
+
+		if (!g_logged_first_kept.exchange(true)) {
+			obs_log(LOG_INFO,
+				"PlateDetector: first kept det conf=%.3f raw_letterbox=[%.1f,%.1f,%.1f,%.1f] "
+				"src_image=[%.1f,%.1f,%.1f,%.1f] (image=%dx%d, scale=%.4f, padX=%d padY=%d)",
+				conf, rawX1, rawY1, rawX2, rawY2, x1, y1, x2, y2, srcW, srcH, scale, padX, padY);
+		}
 
 		boxes.push_back(PlateBox{x1, y1, x2, y2, conf});
 	}
