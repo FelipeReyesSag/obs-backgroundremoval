@@ -25,8 +25,10 @@ struct PlateBox {
 // after the model's built-in NMS; set it to 0 to see every raw detection.
 //
 // Assumes the model is BCHW float32 input (typical YOLOv9 export) and that
-// inputDims[0] has shape [1,3,H,W]. The end2end output is a [1,N,6] tensor of
-// [x1,y1,x2,y2,conf,cls] rows.
+// inputDims[0] has shape [1,3,H,W]. The end2end output has 7 fields per
+// detection in [batch_idx, x1, y1, x2, y2, score, class_id] form. Both
+// channel-first ([1, 7, N]) and row-first ([1, N, 7]) layouts are accepted;
+// 6-field exports without batch_idx also still work.
 //
 // Returns detections; on any runtime error logs and returns empty vector.
 std::vector<PlateBox> detectPlates(ORTModelData &model, const cv::Mat &imageBGRA, float confidenceThreshold);

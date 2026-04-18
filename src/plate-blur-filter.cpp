@@ -312,7 +312,11 @@ void plate_blur_filter_defaults(obs_data_t *settings)
 	obs_data_set_default_bool(settings, "show_debug_overlay", false);
 	obs_data_set_default_int(settings, "num_threads", 2);
 #if defined(__APPLE__)
-	obs_data_set_default_string(settings, "provider", USEGPU_COREML);
+	// CoreML EP currently rejects the bundled YOLOv9-t end2end model when
+	// inference produces zero detections (dynamic-shape limitation). Default
+	// to CPU on macOS until that's resolved or we ship a CoreML-friendly
+	// model variant; users can still pick CoreML manually to experiment.
+	obs_data_set_default_string(settings, "provider", USEGPU_CPU);
 #elif defined(_WIN32)
 	obs_data_set_default_string(settings, "provider", USEGPU_DIRECTML);
 #else
