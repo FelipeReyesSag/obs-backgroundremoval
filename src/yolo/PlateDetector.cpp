@@ -62,6 +62,32 @@ void hwcToChw(const cv::Mat &srcRGBfloat01, std::vector<float> &dst)
 
 } // namespace
 
+namespace {
+
+// One-shot diagnostic helpers. The first time we ever produce any output for a
+// given filter instance, log the runtime shape and a few raw detection rows so
+// users debugging a "nothing gets blurred" scenario can immediately see what
+// the model is actually emitting.
+std::atomic<bool> g_logged_first_shape{false};
+std::atomic<int64_t> g_last_count_log_ms{0};
+
+void log_throttled_detection_summary(int64_t totalRows, int totalAboveThreshold, float threshold, float topConf,
+				     bool channelFirst)
+{
+	using clock = std::chrono::steady_clock;
+	const auto now_ms =
+		std::chrono::duration_cast<std::chrono::milliseconds>(clock::now().time_since_epoch()).count();
+	const int64_t prev = g_last_count_log_ms.load();
+	if (now_ms - prev < 2000)
+		return;
+	g_last_count_log_ms.store(now_ms);
+	obs_log(LOG_INFO, "PlateDetector: rows=%lld above_threshold(>=%.2f)=%d top_conf=%.3f layout=%s",
+		static_cast<long long>(totalRows), threshold, totalAboveThreshold, topConf,
+		channelFirst ? "channel-first" : "row-first");
+}
+
+} // namespace
+
 std::vector<PlateBox> detectPlates(ORTModelData &model, const cv::Mat &imageBGRA, float confidenceThreshold)
 {
 	std::vector<PlateBox> boxes;
@@ -152,24 +178,68 @@ std::vector<PlateBox> detectPlates(ORTModelData &model, const cv::Mat &imageBGRA
 	const std::vector<int64_t> outShape = info.GetShape();
 	const float *data = outputTensors[0].GetTensorData<float>();
 
+	// Log runtime output shape exactly once so users can confirm what the
+	// model is emitting versus what the schema advertised.
+	if (!g_logged_first_shape.exchange(true)) {
+		std::string shapeStr;
+		for (size_t i = 0; i < outShape.size(); ++i) {
+			if (i > 0)
+				shapeStr += ",";
+			shapeStr += std::to_string(outShape[i]);
+		}
+		obs_log(LOG_INFO, "PlateDetector: first inference output shape=[%s]", shapeStr.c_str());
+	}
+
 	int64_t numDets = 0;
 	int64_t numFields = 0;
 	bool channelFirst = false; // true → field f, det i is at data[f*N + i]
-	if (outShape.size() == 3) {
-		// [1, A, B]
+
+	// Prefer the static schema (model.outputDims) to disambiguate channel-first
+	// vs row-first when the runtime shape is small (e.g. [1, 7, 5] is genuinely
+	// ambiguous on its own). The schema marks the dynamic dim as -1; that's
+	// the detection axis. Any positive small dim (5..16) is the field axis.
+	auto &schema = model.outputDims.empty() ? outShape : model.outputDims[0];
+	auto pickAxes = [&](const std::vector<int64_t> &dims) -> bool {
+		if (dims.size() != 3 || dims[0] != 1)
+			return false;
+		const int64_t A = dims[1];
+		const int64_t B = dims[2];
+		const bool aIsFields = (A > 0 && A >= 5 && A <= 16);
+		const bool bIsFields = (B > 0 && B >= 5 && B <= 16);
+		const bool aIsDets = (A == -1) || (!aIsFields && A > 16);
+		const bool bIsDets = (B == -1) || (!bIsFields && B > 16);
+		if (aIsFields && bIsDets) {
+			channelFirst = true;
+			return true;
+		}
+		if (bIsFields && aIsDets) {
+			channelFirst = false;
+			return true;
+		}
+		// Fallback: prefer channel-first if A is in field range.
+		if (aIsFields) {
+			channelFirst = true;
+			return true;
+		}
+		if (bIsFields) {
+			channelFirst = false;
+			return true;
+		}
+		return false;
+	};
+
+	if (outShape.size() == 3 && outShape[0] == 1) {
+		// Determine layout via schema; fall back to runtime shape.
+		if (!pickAxes(schema))
+			pickAxes(outShape);
 		const int64_t A = outShape[1];
 		const int64_t B = outShape[2];
-		// Both 6 and 7 are valid field counts (with/without batch_idx). Treat
-		// the *smaller* of the two trailing dims as the field axis when it's
-		// in [5, 16]; otherwise fall back to row-first.
-		if (A >= 5 && A <= 16 && (B > A || B < 5)) {
+		if (channelFirst) {
 			numFields = A;
 			numDets = B;
-			channelFirst = true;
 		} else {
 			numDets = A;
 			numFields = B;
-			channelFirst = false;
 		}
 	} else if (outShape.size() == 2) {
 		numDets = outShape[0];
@@ -208,11 +278,17 @@ std::vector<PlateBox> detectPlates(ORTModelData &model, const cv::Mat &imageBGRA
 	const int srcW = imageBGRA.cols;
 	const int srcH = imageBGRA.rows;
 
+	float topConf = 0.0f;
+	int passed = 0;
+
 	boxes.reserve(static_cast<size_t>(numDets));
 	for (int64_t i = 0; i < numDets; ++i) {
 		const float conf = fetch(i, fScore);
+		if (conf > topConf)
+			topConf = conf;
 		if (conf < confidenceThreshold)
 			continue;
+		++passed;
 		// Un-letterbox the coordinates: subtract pad offsets, divide by scale.
 		float x1 = (fetch(i, fX1) - padX) * invScale;
 		float y1 = (fetch(i, fY1) - padY) * invScale;
@@ -229,6 +305,8 @@ std::vector<PlateBox> detectPlates(ORTModelData &model, const cv::Mat &imageBGRA
 
 		boxes.push_back(PlateBox{x1, y1, x2, y2, conf});
 	}
+
+	log_throttled_detection_summary(numDets, passed, confidenceThreshold, topConf, channelFirst);
 
 	return boxes;
 }

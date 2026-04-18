@@ -12,12 +12,15 @@
 // is passed in via `delayedFrame`.
 
 uniform float4x4 ViewProj;
-uniform texture2d image;          // bound by OBS filter path; unused
-uniform texture2d delayedFrame;   // what we actually render
-uniform texture2d blurredH;       // horizontally-blurred delayedFrame (for pass 2)
-uniform texture2d blurMask;       // R8; 1 inside (padded) plate boxes, 0 outside
-uniform float2 texel_size;        // 1/width, 1/height of the source frame
-uniform float blur_radius_px;     // user-configurable blur radius in pixels
+uniform texture2d image;                          // bound by OBS filter path; unused
+uniform texture2d delayedFrame;                   // what we actually render
+uniform texture2d blurredH;                       // horizontally-blurred delayedFrame (for pass 2)
+uniform texture2d blurMask;                       // R8; 1 inside (padded) plate boxes, 0 outside
+// Defaults below silence OBS's "Parameter '...' set to invalid size 0,
+// expected N" warning. OBS calls gs_effect_set_default() on every uniform
+// each render; uniforms without a declared default produce a size-0 warning.
+uniform float2 texel_size = {1.0 / 1920.0, 1.0 / 1080.0};
+uniform float blur_radius_px = 12.0;
 
 sampler_state textureSampler {
 	Filter    = Linear;
