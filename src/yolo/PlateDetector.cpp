@@ -260,15 +260,20 @@ std::vector<PlateBox> detectPlates(ORTModelData &model, const cv::Mat &imageBGRA
 		return boxes;
 	}
 
-	// Field index map. 6-field exports drop batch_idx; 7-field exports include
-	// it as field 0. Anything else: assume the standard 7-field end2end layout
-	// and ignore extra fields.
+	// Field index map. The bundled YOLOv9-t end2end export from
+	// ankandrew/open-image-models uses 7 fields per detection in the order:
+	//   [batch_idx, x1, y1, x2, y2, class_id, score]
+	// (verified empirically: with conf~0.035 in the wild, only field[6] tracks
+	// confidence; field[5] is always 0 = the single "plate" class.) The 6-field
+	// fallback is the more common YOLO end2end layout
+	//   [x1, y1, x2, y2, score, class_id]
+	// used by exports that drop batch_idx.
 	const bool hasBatchIdx = (numFields >= 7);
 	const int fX1 = hasBatchIdx ? 1 : 0;
 	const int fY1 = hasBatchIdx ? 2 : 1;
 	const int fX2 = hasBatchIdx ? 3 : 2;
 	const int fY2 = hasBatchIdx ? 4 : 3;
-	const int fScore = hasBatchIdx ? 5 : 4;
+	const int fScore = hasBatchIdx ? 6 : 4;
 
 	auto fetch = [&](int64_t det, int field) -> float {
 		return channelFirst ? data[static_cast<int64_t>(field) * numDets + det]

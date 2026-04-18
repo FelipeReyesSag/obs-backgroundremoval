@@ -83,7 +83,10 @@ struct plate_blur_filter : public std::enable_shared_from_this<plate_blur_filter
 
 	// --- Settings ---
 	int delay_ms = 3000;
-	float conf_threshold = 0.25f;
+	// 0.10 default: the bundled YOLOv9-t end2end model emits low-confidence
+	// scores even on clear plates (~0.03..0.5 in practice). Higher thresholds
+	// produced "no detections ever" reports during bring-up.
+	float conf_threshold = 0.10f;
 	int blur_strength = 12;
 	float box_padding = 0.10f;
 	bool show_debug_overlay = false;
@@ -306,7 +309,7 @@ const char *plate_blur_filter_getname(void *)
 void plate_blur_filter_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_int(settings, "delay_ms", 3000);
-	obs_data_set_default_double(settings, "conf_threshold", 0.25);
+	obs_data_set_default_double(settings, "conf_threshold", 0.10);
 	obs_data_set_default_int(settings, "blur_strength", 12);
 	obs_data_set_default_double(settings, "box_padding", 0.10);
 	obs_data_set_default_bool(settings, "show_debug_overlay", false);
@@ -330,8 +333,10 @@ obs_properties_t *plate_blur_filter_properties(void *)
 
 	obs_properties_add_int_slider(props, "delay_ms", obs_module_text("DelayMs"), 1000, 5000, 100);
 
-	obs_properties_add_float_slider(props, "conf_threshold", obs_module_text("ConfidenceThreshold"), 0.1, 0.9,
-					0.05);
+	// Range 0.02..0.95 because the bundled YOLOv9-t end2end model produces
+	// low-confidence scores; users may need to dial below 0.10 in practice.
+	obs_properties_add_float_slider(props, "conf_threshold", obs_module_text("ConfidenceThreshold"), 0.02, 0.95,
+					0.01);
 
 	obs_properties_add_int_slider(props, "blur_strength", obs_module_text("BlurStrength"), 1, 30, 1);
 
