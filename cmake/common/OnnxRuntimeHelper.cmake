@@ -113,9 +113,7 @@ function(obs_plate_blur_setup_onnxruntime)
     add_library(onnxruntime::onnxruntime SHARED IMPORTED GLOBAL)
     set_target_properties(
       onnxruntime::onnxruntime
-      PROPERTIES
-        IMPORTED_LOCATION "${_ort_primary_lib}"
-        INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_INCLUDE_DIR}"
+      PROPERTIES IMPORTED_LOCATION "${_ort_primary_lib}" INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_INCLUDE_DIR}"
     )
     # Ship every file we saw - symlinks included - so that @rpath/libonnxruntime.dylib
     # inside the linked plugin resolves at runtime.
@@ -141,9 +139,7 @@ function(obs_plate_blur_setup_onnxruntime)
     add_library(onnxruntime::onnxruntime SHARED IMPORTED GLOBAL)
     set_target_properties(
       onnxruntime::onnxruntime
-      PROPERTIES
-        IMPORTED_LOCATION "${_ort_primary_lib}"
-        INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_INCLUDE_DIR}"
+      PROPERTIES IMPORTED_LOCATION "${_ort_primary_lib}" INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_INCLUDE_DIR}"
     )
     list(APPEND _ort_runtime_libs ${_ort_sos})
   endif()

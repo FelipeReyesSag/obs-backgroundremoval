@@ -8,8 +8,8 @@
 
 #include <obs-module.h>
 
-bool captureFilterTargetBGRA(obs_source_t *source, gs_texrender_t **texrenderInOut,
-			     gs_stagesurf_t **stagesurfaceInOut, cv::Mat &outBGRA, uint32_t &width, uint32_t &height)
+bool captureFilterTargetBGRA(obs_source_t *source, gs_texrender_t **texrenderInOut, gs_stagesurf_t **stagesurfaceInOut,
+			     cv::Mat &outBGRA, uint32_t &width, uint32_t &height)
 {
 	if (!source || !obs_source_enabled(source)) {
 		return false;

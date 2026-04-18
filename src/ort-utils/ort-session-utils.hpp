@@ -20,7 +20,7 @@
 // the accelerated provider can't be appended (logged as a warning).
 //
 // `useGPU` takes one of the USEGPU_* constants from plate-blur-consts.h.
-int createOrtSession(ORTModelData &model, const std::string &modelPath, const std::string &useGPU,
-		     uint32_t numThreads, std::string &actualProviderOut);
+int createOrtSession(ORTModelData &model, const std::string &modelPath, const std::string &useGPU, uint32_t numThreads,
+		     std::string &actualProviderOut);
 
 #endif /* ORT_SESSION_UTILS_H */

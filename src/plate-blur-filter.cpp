@@ -472,8 +472,9 @@ void plate_blur_filter_update(void *data, obs_data_t *settings)
 	const std::string modelPath = resolve_model_path();
 
 	if (modelPath.empty()) {
-		obs_log(LOG_ERROR, "Plate detection model file not found. Expected at %s within plugin data. "
-				   "Run scripts/fetch_model.sh (or .ps1) before loading the filter.",
+		obs_log(LOG_ERROR,
+			"Plate detection model file not found. Expected at %s within plugin data. "
+			"Run scripts/fetch_model.sh (or .ps1) before loading the filter.",
 			MODEL_PLATE_YOLO);
 	}
 

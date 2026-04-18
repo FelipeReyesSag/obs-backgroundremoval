@@ -21,7 +21,7 @@
 //   created/reused and written back via the pointer.
 // `stagesurfaceInOut` follows the same create-on-demand pattern and is resized
 //   if the target source's resolution changes between calls.
-bool captureFilterTargetBGRA(obs_source_t *source, gs_texrender_t **texrenderInOut,
-			     gs_stagesurf_t **stagesurfaceInOut, cv::Mat &outBGRA, uint32_t &width, uint32_t &height);
+bool captureFilterTargetBGRA(obs_source_t *source, gs_texrender_t **texrenderInOut, gs_stagesurf_t **stagesurfaceInOut,
+			     cv::Mat &outBGRA, uint32_t &width, uint32_t &height);
 
 #endif /* OBS_UTILS_H */
